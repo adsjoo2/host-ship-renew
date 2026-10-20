@@ -339,7 +339,7 @@ def get_renewal_days_remaining(page):
 def renew_server(page, url):
     """进入单个服务器详情页并点击续期，包含天数阈值判断与动态按钮匹配"""
     full_url = url if url.startswith("http") else f"{PANEL_URL.rstrip('/')}{url}"
-    log(f"打开服务器详情页: {full_url}")
+    log(f"打开服务器详情页: xxx")
     goto_safe(page, full_url)
     page.wait_for_timeout(3000)
 
