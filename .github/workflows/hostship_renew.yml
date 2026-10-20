@@ -62,6 +62,7 @@ jobs:
           echo "Last run: $(date '+%Y-%m-%d %H:%M:%S')" > keep_alive.txt
           git add keep_alive.txt
           git diff --staged --quiet || git commit -m "chore: keep alive $(date '+%Y-%m-%d')"
+          git pull --rebase
           git push
 
       - name: Cleanup old workflow
