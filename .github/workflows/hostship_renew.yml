@@ -1,0 +1,80 @@
+name: HostShip Auto Renew
+on:
+  schedule:
+    - cron: '15 3 */5 * *'   
+  workflow_dispatch:
+permissions:
+  contents: write   # Keep Repo Active 步骤需要 push 权限
+  actions: write    # 清理旧工作流运行记录需要 actions 删除权限
+
+jobs:
+  renew-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies (patchright + real Chrome + requests)
+        run: |
+          pip install patchright requests
+          patchright install --with-deps chrome
+
+      - name: Install xvfb (headed browser helps pass Cloudflare)
+        run: sudo apt-get install -y xvfb
+
+      - name: Enable Cloudflare WARP Network
+        uses: fscarmen/warp-on-actions@v1.4
+        with:
+          stack: dual
+          mode: client
+
+      - name: Run Renew Script
+        env:
+          PANEL_USERNAME: ${{ secrets.PANEL_USERNAME }}
+          PANEL_PASSWORD: ${{ secrets.PANEL_PASSWORD }}
+          HEADLESS: "false"
+        run: xvfb-run -a -s "-screen 0 1366x768x24" python hostship_renew.py
+
+      - name: Upload debug screenshot (if any)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: debug-screenshots
+          path: |
+            login_failed.png
+            error.png
+            cf_blocked.png
+            turnstile_failed_*.png
+            renew_result.png
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Keep Repo Active
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Last run: $(date '+%Y-%m-%d %H:%M:%S')" > keep_alive.txt
+          git add keep_alive.txt
+          git diff --staged --quiet || git commit -m "chore: keep alive $(date '+%Y-%m-%d')"
+          git push
+
+      - name: Cleanup old workflow
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh run list --workflow="${{ github.workflow }}" --limit=100 --json databaseId --jq '.[].databaseId')
+          count=0
+          for run_id in $runs; do
+            count=$((count + 1))
+            if [ $count -gt 1 ]; then
+              echo "删除运行记录: $run_id"
+              gh run delete $run_id || true
+            fi
+          done
