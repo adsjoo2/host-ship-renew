@@ -41,20 +41,6 @@ jobs:
           HEADLESS: "false"
         run: xvfb-run -a -s "-screen 0 1366x768x24" python hostship_renew.py
 
-      - name: Upload debug screenshot (if any)
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: debug-screenshots
-          path: |
-            login_failed.png
-            error.png
-            cf_blocked.png
-            turnstile_failed_*.png
-            renew_result.png
-          if-no-files-found: ignore
-          retention-days: 3
-
       - name: Keep Repo Active
         run: |
           git config user.name "github-actions[bot]"
