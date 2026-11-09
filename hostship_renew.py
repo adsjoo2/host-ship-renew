@@ -291,6 +291,11 @@ def renew_server(page, url):
     else:
         warn("未能读取到剩余天数，继续尝试查找续期按钮")
 
+    # 检查是否本身就已经达到最大限制
+    if page.locator('text=/Maximum 14 days reached/i').count() > 0:
+        log("当前服务器已达最大天数 (Maximum 14 days reached)，无需续期")
+        return True
+
     renew_btn_texts = ["Renew", "续期", "Renouveler"]
     target_btn = None
     for text in renew_btn_texts:
@@ -305,7 +310,7 @@ def renew_server(page, url):
 
     try:
         if target_btn.is_disabled():
-            log("续期按钮当前不可点击（可能已达 Maximum 14 days reached），跳过")
+            log("续期按钮当前不可点击（可能已达上限），跳过")
             return False
     except Exception:
         pass
@@ -315,6 +320,7 @@ def renew_server(page, url):
     log("已点击主界面续期按钮，等待弹窗...")
     page.wait_for_timeout(2500)
 
+    clicked_confirm = False
     try:
         pattern = re.compile(r'(Add \d+ days|Renew now|Confirm|确认|Yes|OK)', re.IGNORECASE)
         confirm_btn = page.locator('button', has_text=pattern)
@@ -323,23 +329,38 @@ def renew_server(page, url):
             matched_text = confirm_btn.first.inner_text()
             confirm_btn.first.click()
             log(f"点击了弹窗确认按钮 (匹配文本: {matched_text})")
+            clicked_confirm = True
             page.wait_for_timeout(3000)
         else:
             warn("未找到弹窗内的确认按钮")
     except Exception as e:
         warn(f"查找确认按钮发生异常: {e}")
 
+    if not clicked_confirm:
+        return False
+
+    # 关键修复：刷新页面以获取最新的服务器天数与按钮状态
+    page.reload()
+    page.wait_for_timeout(3000)
+
+    # 1. 优先判断是否显示“已达上限”提示
+    if page.locator('text=/Maximum 14 days reached/i').count() > 0:
+        log("✅ 续期生效确认：页面已显示 Maximum 14 days reached")
+        return True
+
+    # 2. 对比刷新后的天数
     days_left_after = get_renewal_days_remaining(page)
     if days_left_after is not None and days_left is not None:
-        if days_left_after > days_left:
-            log(f"剩余天数已从 {days_left} 变为 {days_left_after}，续期成功生效")
+        if days_left_after > days_left or days_left_after == 14:
+            log(f"✅ 剩余天数已从 {days_left} 变为 {days_left_after}")
+            return True
         elif days_left_after == days_left:
-            warn("点击后剩余天数未变化，续期可能未被面板接受")
+            warn("点击后剩余天数仍未变化，续期可能未生效")
         else:
-            log(f"剩余天数显示异常（从 {days_left} 变为 {days_left_after}），请以实际面板为准")
+            log(f"剩余天数显示变动（从 {days_left} 变为 {days_left_after}），以控制台实际为准")
+            return True
 
     return True
-
 
 def run_browser_session(username, password, headless):
     launch_kwargs = {
